@@ -13,6 +13,15 @@ rfd = "0.15"
 thiserror = "2.0"
 walkdir = "2.5"
 
+[build-dependencies]
+ico = "0.4"
+winresource = "0.1"
+
+[package.metadata.winresource]
+ProductName = "Normalizador NQ4"
+FileDescription = "Editor y normalizador portable de etiquetas ID3 para MP3"
+OriginalFilename = "normalizador-nq4.exe"
+
 [profile.release]
 lto = "thin"
 codegen-units = 1

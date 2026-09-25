@@ -2,6 +2,7 @@
 
 mod app;
 mod controller;
+mod icon;
 mod model;
 mod service;
 
@@ -13,7 +14,8 @@ fn main() -> eframe::Result<()> {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([1180.0, 760.0])
-            .with_min_inner_size([900.0, 600.0]),
+            .with_min_inner_size([900.0, 600.0])
+            .with_icon(std::sync::Arc::new(icon::window_icon())),
         ..Default::default()
     };
 
