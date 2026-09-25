@@ -15,6 +15,8 @@ fn main() -> eframe::Result<()> {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([1180.0, 760.0])
             .with_min_inner_size([900.0, 600.0])
+            .with_resizable(true)
+            .with_decorations(false)
             .with_icon(std::sync::Arc::new(icon::window_icon())),
         ..Default::default()
     };

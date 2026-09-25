@@ -1,16 +1,18 @@
 use std::{
-    fs::OpenOptions,
+    fs::{self, OpenOptions},
     io::{Read, Seek, SeekFrom},
-    path::Path,
+    path::{Path, PathBuf},
 };
 
 use image::{codecs::jpeg::JpegEncoder, DynamicImage};
 
-use crate::model::{AudioFile, CoverArt, NormalizationOptions, TagData};
+use crate::model::{
+    AudioFile, CoverArt, NormalizationOptions, TagData, NORMALIZED_FOLDER_NAME,
+};
 
 use super::{
     error::{AppError, AppResult},
-    BackupService, TagRepository,
+    TagRepository,
 };
 
 pub trait AudioNormalizer {
@@ -19,8 +21,7 @@ pub trait AudioNormalizer {
         file: &AudioFile,
         options: &NormalizationOptions,
         repository: &dyn TagRepository,
-        backup: &dyn BackupService,
-    ) -> AppResult<()>;
+    ) -> AppResult<PathBuf>;
 }
 
 #[derive(Default)]
@@ -59,6 +60,40 @@ impl IpodSafeNormalizer {
         });
 
         Ok(normalized)
+    }
+
+    fn output_path(source: &Path) -> AppResult<PathBuf> {
+        let parent = source
+            .parent()
+            .ok_or_else(|| AppError::Message("El MP3 no tiene una carpeta padre válida".to_owned()))?;
+
+        let already_in_output = parent
+            .file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| name.eq_ignore_ascii_case(NORMALIZED_FOLDER_NAME));
+
+        if already_in_output {
+            return Ok(source.to_path_buf());
+        }
+
+        let output_dir = parent.join(NORMALIZED_FOLDER_NAME);
+        fs::create_dir_all(&output_dir)?;
+
+        let file_name = source
+            .file_name()
+            .ok_or_else(|| AppError::Message("El MP3 no tiene un nombre de archivo válido".to_owned()))?;
+
+        Ok(output_dir.join(file_name))
+    }
+
+    fn prepare_output(source: &Path) -> AppResult<PathBuf> {
+        let target = Self::output_path(source)?;
+
+        if target != source {
+            fs::copy(source, &target)?;
+        }
+
+        Ok(target)
     }
 
     fn strip_id3v1(path: &Path) -> AppResult<()> {
@@ -110,8 +145,6 @@ impl IpodSafeNormalizer {
 
         let mut truncate_to = len - size;
 
-        // Si existe un header APEv2 adicional inmediatamente antes del bloque,
-        // también se elimina. El tamaño declarado por APE excluye ese header.
         if truncate_to >= 32 {
             file.seek(SeekFrom::Start(truncate_to - 32))?;
             let mut possible_header = [0_u8; 8];
@@ -132,21 +165,20 @@ impl AudioNormalizer for IpodSafeNormalizer {
         file: &AudioFile,
         options: &NormalizationOptions,
         repository: &dyn TagRepository,
-        backup: &dyn BackupService,
-    ) -> AppResult<()> {
-        if options.create_backup {
-            backup.backup(&file.path)?;
-        }
+    ) -> AppResult<PathBuf> {
+        let target = Self::prepare_output(&file.path)?;
 
         if options.strip_id3v1 {
-            Self::strip_id3v1(&file.path)?;
+            Self::strip_id3v1(&target)?;
         }
 
         if options.strip_apev2 {
-            Self::strip_apev2(&file.path)?;
+            Self::strip_apev2(&target)?;
         }
 
         let tags = Self::normalize_cover(&file.tags, options)?;
-        repository.write_clean_v23(&file.path, &tags)
+        repository.write_clean_v23(&target, &tags)?;
+
+        Ok(target)
     }
 }

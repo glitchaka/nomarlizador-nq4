@@ -1,6 +1,5 @@
 #[derive(Clone, Debug)]
 pub struct NormalizationOptions {
-    pub create_backup: bool,
     pub strip_id3v1: bool,
     pub strip_apev2: bool,
     pub normalize_cover: bool,
@@ -11,7 +10,6 @@ pub struct NormalizationOptions {
 impl Default for NormalizationOptions {
     fn default() -> Self {
         Self {
-            create_backup: true,
             strip_id3v1: true,
             strip_apev2: true,
             normalize_cover: true,
@@ -20,3 +18,5 @@ impl Default for NormalizationOptions {
         }
     }
 }
+
+pub const NORMALIZED_FOLDER_NAME: &str = "MP3 normalizados";

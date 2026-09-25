@@ -1,13 +1,14 @@
 use std::{
     fs,
     path::{Path, PathBuf},
+    process::Command,
 };
 
 use crate::{
     model::{AudioFile, CoverArt, NormalizationOptions},
     service::{
-        AudioNormalizer, BackupService, FileBackupService, FileScanner, Id3TagRepository,
-        IpodSafeNormalizer, Mp3FileScanner, TagRepository,
+        AudioNormalizer, FileScanner, Id3TagRepository, IpodSafeNormalizer, Mp3FileScanner,
+        TagRepository,
     },
 };
 
@@ -17,8 +18,8 @@ pub struct MainController {
     repository: Box<dyn TagRepository>,
     scanner: Box<dyn FileScanner>,
     normalizer: Box<dyn AudioNormalizer>,
-    backup: Box<dyn BackupService>,
     status: String,
+    last_output_dir: Option<PathBuf>,
 }
 
 impl Default for MainController {
@@ -29,8 +30,8 @@ impl Default for MainController {
             repository: Box::new(Id3TagRepository),
             scanner: Box::new(Mp3FileScanner),
             normalizer: Box::new(IpodSafeNormalizer),
-            backup: Box::new(FileBackupService),
             status: "Listo. Añade MP3, una carpeta o arrastra archivos a la ventana.".to_owned(),
+            last_output_dir: None,
         }
     }
 }
@@ -65,6 +66,10 @@ impl MainController {
             .iter()
             .map(|file| file.diagnostics.warning_count())
             .sum()
+    }
+
+    pub fn last_output_dir(&self) -> Option<&Path> {
+        self.last_output_dir.as_deref()
     }
 
     pub fn select(&mut self, index: usize) {
@@ -102,8 +107,7 @@ impl MainController {
     }
 
     pub fn add_folder(&mut self, root: &Path) {
-        let files = self.scanner.scan(root);
-        self.add_paths(files);
+        self.add_paths(self.scanner.scan(root));
     }
 
     pub fn save_selected(&mut self) {
@@ -195,7 +199,10 @@ impl MainController {
         };
 
         match self.normalize_index(index, options) {
-            Ok(()) => self.status = "Archivo normalizado sin recodificar el audio.".to_owned(),
+            Ok(target) => {
+                self.remember_output(&target);
+                self.status = format!("MP3 normalizado: {}", target.display());
+            }
             Err(error) => self.status = format!("Error al normalizar: {error}"),
         }
     }
@@ -204,8 +211,30 @@ impl MainController {
         &mut self,
         index: usize,
         options: &NormalizationOptions,
-    ) -> Result<(), String> {
-        self.normalize_index(index, options)
+    ) -> Result<PathBuf, String> {
+        let target = self.normalize_index(index, options)?;
+        self.remember_output(&target);
+        Ok(target)
+    }
+
+    pub fn open_output_folder(&mut self) {
+        let Some(path) = self.last_output_dir.clone() else {
+            self.status = "Todavía no hay una carpeta de salida.".to_owned();
+            return;
+        };
+
+        #[cfg(target_os = "windows")]
+        {
+            match Command::new("explorer").arg(&path).spawn() {
+                Ok(_) => self.status = format!("Abriendo {}", path.display()),
+                Err(error) => self.status = format!("No se pudo abrir la carpeta: {error}"),
+            }
+        }
+
+        #[cfg(not(target_os = "windows"))]
+        {
+            self.status = format!("Carpeta de salida: {}", path.display());
+        }
     }
 
     pub fn set_status(&mut self, value: impl Into<String>) {
@@ -255,6 +284,10 @@ impl MainController {
         }
     }
 
+    fn remember_output(&mut self, target: &Path) {
+        self.last_output_dir = target.parent().map(Path::to_path_buf);
+    }
+
     fn save_index(&mut self, index: usize) -> Result<(), String> {
         self.repository
             .save_preserving_unknown_frames(&self.files[index])
@@ -273,24 +306,12 @@ impl MainController {
         &mut self,
         index: usize,
         options: &NormalizationOptions,
-    ) -> Result<(), String> {
+    ) -> Result<PathBuf, String> {
         let file = self.files[index].clone();
 
         self.normalizer
-            .normalize(
-                &file,
-                options,
-                self.repository.as_ref(),
-                self.backup.as_ref(),
-            )
-            .map_err(|error| error.to_string())?;
-
-        self.files[index] = self
-            .repository
-            .load(&file.path)
-            .map_err(|error| error.to_string())?;
-
-        Ok(())
+            .normalize(&file, options, self.repository.as_ref())
+            .map_err(|error| error.to_string())
     }
 
     fn add_files(&mut self, paths: impl IntoIterator<Item = PathBuf>) -> (usize, usize) {
@@ -298,16 +319,12 @@ impl MainController {
         let mut rejected = 0;
 
         for path in paths {
-            if self
-                .files
-                .iter()
-                .any(|existing| {
-                    existing
-                        .path
-                        .to_string_lossy()
-                        .eq_ignore_ascii_case(path.to_string_lossy().as_ref())
-                })
-            {
+            if self.files.iter().any(|existing| {
+                existing
+                    .path
+                    .to_string_lossy()
+                    .eq_ignore_ascii_case(path.to_string_lossy().as_ref())
+            }) {
                 continue;
             }
 
