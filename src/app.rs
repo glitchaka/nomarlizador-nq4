@@ -5,7 +5,7 @@ use rfd::FileDialog;
 
 use crate::{
     controller::MainController,
-    model::{NormalizationOptions, NORMALIZED_FOLDER_NAME},
+    model::{CoverArt, NormalizationOptions, NORMALIZED_FOLDER_NAME},
 };
 
 struct BatchJob {
@@ -67,10 +67,21 @@ impl Nq4App {
         }
 
         let mut style = (*ctx.style()).clone();
-        style.spacing.button_padding = egui::vec2(10.0, 5.0);
-        style.spacing.item_spacing = egui::vec2(8.0, 7.0);
-        style.spacing.interact_size.y = 28.0;
+        style.spacing.button_padding = egui::vec2(12.0, 7.0);
+        style.spacing.item_spacing = egui::vec2(9.0, 8.0);
+        style.spacing.interact_size.y = 30.0;
+        style.spacing.window_margin = egui::Margin::same(14);
         ctx.set_style(style);
+
+        let mut visuals = egui::Visuals::dark();
+        visuals.panel_fill = egui::Color32::from_rgb(19, 22, 27);
+        visuals.window_fill = egui::Color32::from_rgb(24, 27, 33);
+        visuals.extreme_bg_color = egui::Color32::from_rgb(12, 14, 18);
+        visuals.faint_bg_color = egui::Color32::from_rgb(29, 33, 39);
+        visuals.selection.bg_fill = egui::Color32::from_rgb(20, 112, 151);
+        visuals.selection.stroke = egui::Stroke::new(1.0, egui::Color32::from_rgb(76, 185, 224));
+        ctx.set_visuals(visuals);
+
         self.style_configured = true;
     }
 
@@ -84,6 +95,57 @@ impl Nq4App {
         if let Some(folder) = FileDialog::new().pick_folder() {
             self.controller.add_folder(&folder);
         }
+    }
+
+    fn cover_texture(
+        &mut self,
+        ctx: &egui::Context,
+        key: &str,
+        cover: Option<&CoverArt>,
+    ) -> Option<egui::TextureHandle> {
+        let Some(cover) = cover else {
+            self.cover_texture = None;
+            self.cover_texture_key = None;
+            return None;
+        };
+
+        if self.cover_texture_key.as_deref() != Some(key) {
+            self.cover_texture = image::load_from_memory(&cover.data).ok().map(|image| {
+                let rgba = image.to_rgba8();
+                let size = [rgba.width() as usize, rgba.height() as usize];
+                let pixels = rgba.into_raw();
+                let color_image = egui::ColorImage::from_rgba_unmultiplied(size, &pixels);
+                ctx.load_texture(
+                    format!("cover:{key}"),
+                    color_image,
+                    egui::TextureOptions::LINEAR,
+                )
+            });
+            self.cover_texture_key = Some(key.to_owned());
+        }
+
+        self.cover_texture.clone()
+    }
+
+    fn cover_placeholder(ui: &mut egui::Ui, size: egui::Vec2) {
+        let (rect, _) = ui.allocate_exact_size(size, egui::Sense::hover());
+        let fill = egui::Color32::from_rgb(31, 35, 41);
+        let stroke = egui::Stroke::new(1.0, egui::Color32::from_rgb(64, 70, 78));
+        ui.painter().rect(rect, 10.0, fill, stroke, egui::StrokeKind::Inside);
+        ui.painter().text(
+            rect.center(),
+            egui::Align2::CENTER_CENTER,
+            "♫",
+            egui::FontId::proportional(56.0),
+            egui::Color32::from_rgb(112, 120, 132),
+        );
+        ui.painter().text(
+            rect.center_bottom() - egui::vec2(0.0, 22.0),
+            egui::Align2::CENTER_BOTTOM,
+            "Sin carátula",
+            egui::FontId::proportional(13.0),
+            egui::Color32::from_rgb(145, 151, 160),
+        );
     }
 
     fn handle_drop(&mut self, ctx: &egui::Context) {
@@ -352,14 +414,15 @@ impl Nq4App {
 
     fn toolbar(&mut self, ctx: &egui::Context) {
         egui::TopBottomPanel::top("toolbar")
-            .exact_height(46.0)
+            .exact_height(52.0)
+            .frame(egui::Frame::new().fill(egui::Color32::from_rgb(22, 25, 30)))
             .show(ctx, |ui| {
                 ui.horizontal_centered(|ui| {
-                    if ui.button("＋ MP3").clicked() {
+                    if ui.button("＋ Añadir MP3").clicked() {
                         self.open_files();
                     }
 
-                    if ui.button("＋ Carpeta").clicked() {
+                    if ui.button("＋ Añadir carpeta").clicked() {
                         self.open_folder();
                     }
 
@@ -377,26 +440,6 @@ impl Nq4App {
 
                     if ui
                         .add_enabled(
-                            self.controller.selected().is_some() && self.batch.is_none(),
-                            egui::Button::new("Normalizar seleccionado"),
-                        )
-                        .clicked()
-                    {
-                        self.controller.normalize_selected(&self.normalization);
-                    }
-
-                    if ui
-                        .add_enabled(
-                            self.controller.selected().is_some(),
-                            egui::Button::new("Editar tags"),
-                        )
-                        .clicked()
-                    {
-                        self.show_editor = true;
-                    }
-
-                    if ui
-                        .add_enabled(
                             self.controller.last_output_dir().is_some(),
                             egui::Button::new("Abrir MP3 normalizados"),
                         )
@@ -405,18 +448,18 @@ impl Nq4App {
                         self.controller.open_output_folder();
                     }
 
-                    ui.separator();
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if !self.filter.is_empty() && ui.small_button("×").clicked() {
+                            self.filter.clear();
+                        }
 
-                    ui.label("Buscar");
-                    ui.add(
-                        egui::TextEdit::singleline(&mut self.filter)
-                            .desired_width(240.0)
-                            .hint_text("archivo, título, artista, álbum"),
-                    );
-
-                    if !self.filter.is_empty() && ui.small_button("×").clicked() {
-                        self.filter.clear();
-                    }
+                        ui.add(
+                            egui::TextEdit::singleline(&mut self.filter)
+                                .desired_width(260.0)
+                                .hint_text("Buscar título, artista, álbum o archivo…"),
+                        );
+                        ui.label("Buscar");
+                    });
                 });
             });
     }
@@ -424,21 +467,33 @@ impl Nq4App {
     fn files_panel(&mut self, ctx: &egui::Context) {
         egui::SidePanel::left("files")
             .resizable(true)
-            .default_width(350.0)
-            .min_width(260.0)
+            .default_width(410.0)
+            .min_width(330.0)
+            .max_width(520.0)
+            .frame(
+                egui::Frame::new()
+                    .fill(egui::Color32::from_rgb(17, 20, 24))
+                    .inner_margin(egui::Margin::same(10)),
+            )
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
-                    ui.heading("Archivos");
+                    ui.heading("Biblioteca de trabajo");
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        ui.label(format!("{}", self.controller.files().len()));
+                        ui.label(format!("{} MP3", self.controller.files().len()));
                     });
                 });
+                ui.label(
+                    egui::RichText::new("Selecciona un tema para revisar sus tags y compatibilidad.")
+                        .small()
+                        .color(egui::Color32::from_rgb(145, 151, 160)),
+                );
+                ui.add_space(5.0);
                 ui.separator();
 
                 let selected = self.controller.selected_index();
                 let filter = self.filter.trim().to_lowercase();
 
-                let rows: Vec<(usize, String, String, String, usize, bool)> = self
+                let rows: Vec<(usize, String, String, String, String, usize, bool)> = self
                     .controller
                     .files()
                     .iter()
@@ -457,157 +512,301 @@ impl Nq4App {
                             return None;
                         }
 
+                        let primary = if file.tags.title.trim().is_empty() {
+                            file.display_name()
+                        } else {
+                            file.tags.title.clone()
+                        };
+
                         Some((
                             index,
-                            file.display_name(),
+                            primary,
                             file.tags.artist.clone(),
-                            file.diagnostics.id3_version.clone(),
+                            file.tags.album.clone(),
+                            file.display_name(),
                             file.diagnostics.warning_count(),
                             file.dirty,
                         ))
                     })
                     .collect();
 
-                egui::ScrollArea::vertical().show(ui, |ui| {
-                    for (index, name, artist, version, warnings, dirty) in rows {
-                        let selected_row = selected == Some(index);
-                        let response = ui.selectable_label(
-                            selected_row,
-                            if dirty { format!("● {name}") } else { name },
-                        );
+                egui::ScrollArea::vertical()
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        for (index, title, artist, album, filename, warnings, dirty) in rows {
+                            let selected_row = selected == Some(index);
 
-                        ui.horizontal(|ui| {
-                            if !artist.is_empty() {
-                                ui.small(artist);
-                            }
-                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                if warnings > 0 {
-                                    ui.colored_label(
-                                        egui::Color32::from_rgb(235, 185, 80),
-                                        format!("⚠ {warnings}"),
-                                    );
-                                }
-                                ui.small(version);
+                            let response = ui
+                                .selectable_label(
+                                    selected_row,
+                                    egui::RichText::new(if dirty {
+                                        format!("● {title}")
+                                    } else {
+                                        title.clone()
+                                    })
+                                    .size(14.0),
+                                )
+                                .on_hover_text(filename.clone());
+
+                            let subtitle = match (artist.trim().is_empty(), album.trim().is_empty()) {
+                                (false, false) => format!("{artist}  ·  {album}"),
+                                (false, true) => artist,
+                                (true, false) => album,
+                                (true, true) => filename,
+                            };
+
+                            ui.horizontal(|ui| {
+                                ui.add(
+                                    egui::Label::new(
+                                        egui::RichText::new(subtitle)
+                                            .small()
+                                            .color(egui::Color32::from_rgb(145, 151, 160)),
+                                    )
+                                    .truncate(),
+                                );
+
+                                ui.with_layout(
+                                    egui::Layout::right_to_left(egui::Align::Center),
+                                    |ui| {
+                                        if warnings > 0 {
+                                            ui.colored_label(
+                                                egui::Color32::from_rgb(235, 185, 80),
+                                                format!("⚠ {warnings}"),
+                                            );
+                                        }
+                                    },
+                                );
                             });
-                        });
 
-                        if response.clicked() {
-                            self.controller.select(index);
-                            self.cover_texture_key = None;
+                            if response.clicked() {
+                                self.controller.select(index);
+                                self.cover_texture_key = None;
+                            }
+
+                            if response.double_clicked() {
+                                self.show_editor = true;
+                            }
+
+                            ui.add_space(3.0);
+                            ui.separator();
                         }
-
-                        if response.double_clicked() {
-                            self.show_editor = true;
-                        }
-
-                        ui.separator();
-                    }
-                });
+                    });
             });
     }
 
-    fn overview(&mut self, ui: &mut egui::Ui) {
-        let Some(file) = self.controller.selected() else {
+    fn overview(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
+        let Some(index) = self.controller.selected_index() else {
             ui.vertical_centered(|ui| {
-                ui.add_space(110.0);
+                ui.add_space(120.0);
                 ui.heading("Normalizador NQ4");
                 ui.label("Añade MP3 o una carpeta completa para comenzar.");
                 ui.add_space(8.0);
                 ui.label(format!(
-                    "Los resultados se guardan en una carpeta «{NORMALIZED_FOLDER_NAME}»."
+                    "La normalización por lote crea los resultados en «{NORMALIZED_FOLDER_NAME}»."
                 ));
             });
             return;
         };
 
-        let name = file.display_name();
-        let path = file.path.display().to_string();
-        let title = file.tags.title.clone();
-        let artist = file.tags.artist.clone();
-        let album = file.tags.album.clone();
-        let genre = file.tags.genre.clone();
-        let year = file.tags.year.clone();
-        let version = file.diagnostics.id3_version.clone();
-        let tlen = file.diagnostics.raw_tlen.clone();
-        let warnings = file.diagnostics.warnings();
-        let dirty = file.dirty;
+        let (
+            name,
+            path,
+            title,
+            artist,
+            album,
+            genre,
+            year,
+            track,
+            disc,
+            version,
+            tlen,
+            warnings,
+            dirty,
+            cover,
+        ) = {
+            let file = &self.controller.files()[index];
+            (
+                file.display_name(),
+                file.path.display().to_string(),
+                file.tags.title.clone(),
+                file.tags.artist.clone(),
+                file.tags.album.clone(),
+                file.tags.genre.clone(),
+                file.tags.year.clone(),
+                file.tags.track.clone(),
+                file.tags.disc.clone(),
+                file.diagnostics.id3_version.clone(),
+                file.diagnostics.raw_tlen.clone(),
+                file.diagnostics.warnings(),
+                file.dirty,
+                file.tags.cover.clone(),
+            )
+        };
+
+        let cover_key = format!("{path}:{}", cover.as_ref().map(|c| c.data.len()).unwrap_or(0));
+        let texture = self.cover_texture(ctx, &cover_key, cover.as_ref());
 
         ui.horizontal(|ui| {
-            ui.heading(name);
-            if dirty {
-                ui.colored_label(
-                    egui::Color32::from_rgb(235, 185, 80),
-                    "● cambios sin guardar",
+            ui.vertical(|ui| {
+                ui.label(
+                    egui::RichText::new(if title.trim().is_empty() { &name } else { &title })
+                        .size(24.0)
+                        .strong(),
                 );
-            }
-        });
-        ui.monospace(path);
-        ui.add_space(14.0);
 
-        ui.horizontal_wrapped(|ui| {
-            if ui.button("Editar tags…").clicked() {
-                self.show_editor = true;
-            }
-            if ui.button("Normalizar este MP3").clicked() {
-                self.controller.normalize_selected(&self.normalization);
-            }
-            if ui.button("Diagnóstico").clicked() {
-                self.show_diagnostics = true;
-            }
-        });
+                if !artist.trim().is_empty() {
+                    ui.label(
+                        egui::RichText::new(&artist)
+                            .size(16.0)
+                            .color(egui::Color32::from_rgb(180, 188, 198)),
+                    );
+                }
 
-        ui.add_space(14.0);
-
-        egui::Grid::new("overview_grid")
-            .num_columns(2)
-            .spacing([30.0, 9.0])
-            .striped(true)
-            .show(ui, |ui| {
-                ui.label("Título");
-                ui.label(if title.is_empty() { "—" } else { &title });
-                ui.end_row();
-
-                ui.label("Artista");
-                ui.label(if artist.is_empty() { "—" } else { &artist });
-                ui.end_row();
-
-                ui.label("Álbum");
-                ui.label(if album.is_empty() { "—" } else { &album });
-                ui.end_row();
-
-                ui.label("Género");
-                ui.label(if genre.is_empty() { "—" } else { &genre });
-                ui.end_row();
-
-                ui.label("Año");
-                ui.label(if year.is_empty() { "—" } else { &year });
-                ui.end_row();
-
-                ui.label("ID3");
-                ui.label(version);
-                ui.end_row();
-
-                ui.label("TLEN");
-                ui.label(tlen.as_deref().unwrap_or("No presente"));
-                ui.end_row();
+                ui.label(
+                    egui::RichText::new(&path)
+                        .small()
+                        .color(egui::Color32::from_rgb(126, 134, 145)),
+                );
             });
 
-        ui.add_space(14.0);
-
-        if warnings.is_empty() {
-            ui.colored_label(
-                egui::Color32::from_rgb(120, 200, 140),
-                "Sin alertas ID3 detectadas.",
-            );
-        } else {
-            ui.heading("Alertas");
-            for warning in warnings {
-                ui.colored_label(
-                    egui::Color32::from_rgb(235, 185, 80),
-                    format!("⚠ {warning}"),
-                );
+            if dirty {
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
+                    ui.colored_label(
+                        egui::Color32::from_rgb(235, 185, 80),
+                        "● cambios sin guardar",
+                    );
+                });
             }
-        }
+        });
+
+        ui.add_space(12.0);
+        ui.separator();
+        ui.add_space(12.0);
+
+        ui.horizontal_top(|ui| {
+            ui.vertical(|ui| {
+                let cover_size = egui::vec2(230.0, 230.0);
+
+                if let Some(texture) = &texture {
+                    let image = egui::Image::new((texture.id(), cover_size))
+                        .corner_radius(8.0);
+                    if ui.add(image).on_hover_text("Abrir vista previa").clicked() {
+                        self.show_cover = true;
+                    }
+                } else {
+                    Self::cover_placeholder(ui, cover_size);
+                }
+
+                ui.add_space(10.0);
+
+                if ui
+                    .add_sized([230.0, 34.0], egui::Button::new("Editar tags…"))
+                    .clicked()
+                {
+                    self.show_editor = true;
+                }
+
+                if ui
+                    .add_enabled(
+                        self.batch.is_none(),
+                        egui::Button::new("Normalizar seleccionado"),
+                    )
+                    .clicked()
+                {
+                    self.controller.normalize_selected(&self.normalization);
+                }
+
+                if cover.is_some() && ui.button("Vista previa de carátula").clicked() {
+                    self.show_cover = true;
+                }
+            });
+
+            ui.add_space(20.0);
+
+            ui.vertical(|ui| {
+                ui.heading("Información");
+                ui.add_space(4.0);
+
+                egui::Grid::new("overview_grid")
+                    .num_columns(2)
+                    .spacing([26.0, 10.0])
+                    .striped(true)
+                    .show(ui, |ui| {
+                        Self::info_row(ui, "Título", &title);
+                        Self::info_row(ui, "Artista", &artist);
+                        Self::info_row(ui, "Álbum", &album);
+                        Self::info_row(ui, "Género", &genre);
+                        Self::info_row(ui, "Año", &year);
+                        Self::info_row(ui, "Pista", &track);
+                        Self::info_row(ui, "Disco", &disc);
+
+                        ui.label("ID3");
+                        ui.label(&version);
+                        ui.end_row();
+
+                        ui.label("TLEN");
+                        ui.label(tlen.as_deref().unwrap_or("No presente"));
+                        ui.end_row();
+
+                        ui.label("Carátula");
+                        ui.label(
+                            cover
+                                .as_ref()
+                                .map(|c| {
+                                    format!(
+                                        "{} · {:.1} KiB",
+                                        c.mime_type,
+                                        c.data.len() as f32 / 1024.0
+                                    )
+                                })
+                                .unwrap_or_else(|| "No presente".to_owned()),
+                        );
+                        ui.end_row();
+                    });
+
+                ui.add_space(16.0);
+
+                if warnings.is_empty() {
+                    egui::Frame::new()
+                        .fill(egui::Color32::from_rgb(24, 49, 38))
+                        .inner_margin(egui::Margin::same(12))
+                        .corner_radius(8.0)
+                        .show(ui, |ui| {
+                            ui.colored_label(
+                                egui::Color32::from_rgb(128, 214, 157),
+                                "✓ Sin alertas de compatibilidad ID3",
+                            );
+                        });
+                } else {
+                    egui::Frame::new()
+                        .fill(egui::Color32::from_rgb(52, 43, 22))
+                        .inner_margin(egui::Margin::same(12))
+                        .corner_radius(8.0)
+                        .show(ui, |ui| {
+                            ui.label(
+                                egui::RichText::new(format!(
+                                    "{} alerta(s) de compatibilidad",
+                                    warnings.len()
+                                ))
+                                .strong()
+                                .color(egui::Color32::from_rgb(245, 196, 86)),
+                            );
+                            for warning in &warnings {
+                                ui.label(
+                                    egui::RichText::new(format!("• {warning}"))
+                                        .color(egui::Color32::from_rgb(221, 205, 165)),
+                                );
+                            }
+                        });
+                }
+            });
+        });
+    }
+
+    fn info_row(ui: &mut egui::Ui, label: &str, value: &str) {
+        ui.label(label);
+        ui.label(if value.trim().is_empty() { "—" } else { value });
+        ui.end_row();
     }
 
     fn editor_window(&mut self, ctx: &egui::Context) {
@@ -1066,7 +1265,7 @@ impl eframe::App for Nq4App {
         self.files_panel(ctx);
 
         egui::CentralPanel::default().show(ctx, |ui| {
-            egui::ScrollArea::vertical().show(ui, |ui| self.overview(ui));
+            egui::ScrollArea::vertical().show(ui, |ui| self.overview(ctx, ui));
         });
 
         self.editor_window(ctx);
