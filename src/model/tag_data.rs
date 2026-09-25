@@ -1,11 +1,11 @@
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct CoverArt {
     pub mime_type: String,
     pub description: String,
     pub data: Vec<u8>,
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct TagData {
     pub title: String,
     pub artist: String,

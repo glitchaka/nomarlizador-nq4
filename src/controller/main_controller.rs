@@ -30,7 +30,7 @@ impl Default for MainController {
             scanner: Box::new(Mp3FileScanner),
             normalizer: Box::new(IpodSafeNormalizer),
             backup: Box::new(FileBackupService),
-            status: "Arrastra MP3 o usa «Añadir MP3» / «Añadir carpeta».".to_owned(),
+            status: "Listo. Añade MP3, una carpeta o arrastra archivos a la ventana.".to_owned(),
         }
     }
 }
@@ -56,21 +56,43 @@ impl MainController {
         &self.status
     }
 
+    pub fn dirty_count(&self) -> usize {
+        self.files.iter().filter(|file| file.dirty).count()
+    }
+
+    pub fn warning_count(&self) -> usize {
+        self.files
+            .iter()
+            .map(|file| file.diagnostics.warning_count())
+            .sum()
+    }
+
     pub fn select(&mut self, index: usize) {
         if index < self.files.len() {
             self.selected = Some(index);
         }
     }
 
+    pub fn mark_selected_dirty(&mut self) {
+        if let Some(file) = self.selected_mut() {
+            file.dirty = true;
+        }
+    }
+
     pub fn add_paths(&mut self, paths: impl IntoIterator<Item = PathBuf>) {
         let mut added = 0_usize;
+        let mut rejected = 0_usize;
 
         for path in paths {
             if path.is_dir() {
                 let discovered = self.scanner.scan(&path);
-                added += self.add_files(discovered);
+                let (ok, bad) = self.add_files(discovered);
+                added += ok;
+                rejected += bad;
             } else if Self::is_mp3(&path) {
-                added += self.add_files([path]);
+                let (ok, bad) = self.add_files([path]);
+                added += ok;
+                rejected += bad;
             }
         }
 
@@ -78,10 +100,10 @@ impl MainController {
             self.selected = Some(0);
         }
 
-        self.status = if added == 0 {
-            "No se agregaron MP3 nuevos.".to_owned()
-        } else {
-            format!("Se agregaron {added} archivo(s).")
+        self.status = match (added, rejected) {
+            (0, 0) => "No se agregaron MP3 nuevos.".to_owned(),
+            (_, 0) => format!("Se agregaron {added} archivo(s)."),
+            _ => format!("Se agregaron {added}; {rejected} no se pudieron leer."),
         };
     }
 
@@ -96,17 +118,80 @@ impl MainController {
             return;
         };
 
-        let result = self.repository.save_preserving_unknown_frames(&self.files[index]);
-        match result {
-            Ok(()) => match self.repository.load(&self.files[index].path) {
-                Ok(reloaded) => {
-                    self.files[index] = reloaded;
-                    self.status = "Tags guardados como ID3v2.3.".to_owned();
-                }
-                Err(error) => self.status = format!("Guardado, pero no se pudo recargar: {error}"),
-            },
+        match self.save_index(index) {
+            Ok(()) => self.status = "Tags guardados como ID3v2.3.".to_owned(),
             Err(error) => self.status = format!("No se pudo guardar: {error}"),
         }
+    }
+
+    pub fn save_all(&mut self) {
+        let indices: Vec<usize> = self
+            .files
+            .iter()
+            .enumerate()
+            .filter_map(|(index, file)| file.dirty.then_some(index))
+            .collect();
+
+        if indices.is_empty() {
+            self.status = "No hay cambios pendientes.".to_owned();
+            return;
+        }
+
+        let mut ok = 0;
+        let mut failed = Vec::new();
+
+        for index in indices {
+            match self.save_index(index) {
+                Ok(()) => ok += 1,
+                Err(error) => failed.push(format!("{}: {error}", self.files[index].display_name())),
+            }
+        }
+
+        self.status = if failed.is_empty() {
+            format!("{ok} archivo(s) guardado(s).")
+        } else {
+            format!("{ok} guardado(s); {} con error. {}", failed.len(), failed[0])
+        };
+    }
+
+    pub fn reload_selected(&mut self) {
+        let Some(index) = self.selected else {
+            self.status = "No hay archivo seleccionado.".to_owned();
+            return;
+        };
+
+        let path = self.files[index].path.clone();
+        match self.repository.load(&path) {
+            Ok(reloaded) => {
+                self.files[index] = reloaded;
+                self.status = "Cambios locales descartados.".to_owned();
+            }
+            Err(error) => self.status = format!("No se pudo recargar: {error}"),
+        }
+    }
+
+    pub fn remove_selected(&mut self) {
+        let Some(index) = self.selected else {
+            return;
+        };
+
+        self.files.remove(index);
+
+        self.selected = if self.files.is_empty() {
+            None
+        } else if index >= self.files.len() {
+            Some(self.files.len() - 1)
+        } else {
+            Some(index)
+        };
+
+        self.status = "Archivo quitado de la lista. El MP3 no fue eliminado.".to_owned();
+    }
+
+    pub fn clear(&mut self) {
+        self.files.clear();
+        self.selected = None;
+        self.status = "Lista vaciada. No se eliminaron archivos del disco.".to_owned();
     }
 
     pub fn normalize_selected(&mut self, options: &NormalizationOptions) {
@@ -121,31 +206,16 @@ impl MainController {
         }
     }
 
-    pub fn normalize_all(&mut self, options: &NormalizationOptions) {
-        if self.files.is_empty() {
-            self.status = "No hay archivos cargados.".to_owned();
-            return;
-        }
+    pub fn normalize_one(
+        &mut self,
+        index: usize,
+        options: &NormalizationOptions,
+    ) -> Result<(), String> {
+        self.normalize_index(index, options)
+    }
 
-        let mut ok = 0_usize;
-        let mut failed = Vec::new();
-
-        for index in 0..self.files.len() {
-            match self.normalize_index(index, options) {
-                Ok(()) => ok += 1,
-                Err(error) => failed.push(format!("{}: {error}", self.files[index].display_name())),
-            }
-        }
-
-        self.status = if failed.is_empty() {
-            format!("{ok} archivo(s) normalizado(s).")
-        } else {
-            format!(
-                "{ok} normalizado(s); {} con error. Primero: {}",
-                failed.len(),
-                failed[0]
-            )
-        };
+    pub fn set_status(&mut self, value: impl Into<String>) {
+        self.status = value.into();
     }
 
     pub fn set_cover(&mut self, path: &Path) {
@@ -176,7 +246,8 @@ impl MainController {
                     description: "Cover".to_owned(),
                     data,
                 });
-                self.status = "Portada cargada. Pulsa «Guardar tags» para escribirla.".to_owned();
+                file.dirty = true;
+                self.status = "Portada cargada. Hay cambios sin guardar.".to_owned();
             }
             Err(error) => self.status = format!("No se pudo leer la portada: {error}"),
         }
@@ -185,8 +256,23 @@ impl MainController {
     pub fn remove_cover(&mut self) {
         if let Some(file) = self.selected_mut() {
             file.tags.cover = None;
-            self.status = "Portada eliminada en memoria. Pulsa «Guardar tags».".to_owned();
+            file.dirty = true;
+            self.status = "Portada eliminada. Hay cambios sin guardar.".to_owned();
         }
+    }
+
+    fn save_index(&mut self, index: usize) -> Result<(), String> {
+        self.repository
+            .save_preserving_unknown_frames(&self.files[index])
+            .map_err(|error| error.to_string())?;
+
+        let path = self.files[index].path.clone();
+        self.files[index] = self
+            .repository
+            .load(&path)
+            .map_err(|error| format!("Guardado, pero no se pudo recargar: {error}"))?;
+
+        Ok(())
     }
 
     fn normalize_index(
@@ -213,8 +299,9 @@ impl MainController {
         Ok(())
     }
 
-    fn add_files(&mut self, paths: impl IntoIterator<Item = PathBuf>) -> usize {
+    fn add_files(&mut self, paths: impl IntoIterator<Item = PathBuf>) -> (usize, usize) {
         let mut added = 0;
+        let mut rejected = 0;
 
         for path in paths {
             if self
@@ -225,13 +312,16 @@ impl MainController {
                 continue;
             }
 
-            if let Ok(file) = self.repository.load(&path) {
-                self.files.push(file);
-                added += 1;
+            match self.repository.load(&path) {
+                Ok(file) => {
+                    self.files.push(file);
+                    added += 1;
+                }
+                Err(_) => rejected += 1,
             }
         }
 
-        added
+        (added, rejected)
     }
 
     fn is_mp3(path: &Path) -> bool {

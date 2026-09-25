@@ -16,9 +16,9 @@ impl Diagnostics {
         let mut warnings = Vec::new();
 
         if self.id3_version == "ID3v2.4" {
-            warnings.push("ID3v2.4: se normalizará a ID3v2.3".to_owned());
+            warnings.push("ID3v2.4: conviene normalizar a ID3v2.3".to_owned());
         } else if self.id3_version == "Sin ID3v2" {
-            warnings.push("El archivo no tiene ID3v2; se creará una etiqueta".to_owned());
+            warnings.push("Sin ID3v2: se puede crear una etiqueta nueva".to_owned());
         }
 
         if let Some(tlen) = &self.raw_tlen {
@@ -39,6 +39,10 @@ impl Diagnostics {
 
         warnings
     }
+
+    pub fn warning_count(&self) -> usize {
+        self.warnings().len()
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -46,6 +50,7 @@ pub struct AudioFile {
     pub path: PathBuf,
     pub tags: TagData,
     pub diagnostics: Diagnostics,
+    pub dirty: bool,
 }
 
 impl AudioFile {

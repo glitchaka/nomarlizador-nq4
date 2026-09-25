@@ -109,25 +109,31 @@ impl Id3TagRepository {
         tag.remove("TYER");
         tag.remove("TDRC");
         if !data.year.trim().is_empty() {
-            let year = data.year.trim().parse::<i32>().map_err(|_| {
-                AppError::Message("El año debe ser un número entero".to_owned())
-            })?;
+            let year = data
+                .year
+                .trim()
+                .parse::<i32>()
+                .map_err(|_| AppError::Message("El año debe ser un número entero".to_owned()))?;
             tag.set_year(year);
         }
 
         tag.remove("TRCK");
         if !data.track.trim().is_empty() {
-            let track = data.track.trim().parse::<u32>().map_err(|_| {
-                AppError::Message("La pista debe ser un número entero".to_owned())
-            })?;
+            let track = data
+                .track
+                .trim()
+                .parse::<u32>()
+                .map_err(|_| AppError::Message("La pista debe ser un número entero".to_owned()))?;
             tag.set_track(track);
         }
 
         tag.remove("TPOS");
         if !data.disc.trim().is_empty() {
-            let disc = data.disc.trim().parse::<u32>().map_err(|_| {
-                AppError::Message("El disco debe ser un número entero".to_owned())
-            })?;
+            let disc = data
+                .disc
+                .trim()
+                .parse::<u32>()
+                .map_err(|_| AppError::Message("El disco debe ser un número entero".to_owned()))?;
             tag.set_disc(disc);
         }
 
@@ -186,6 +192,7 @@ impl TagRepository for Id3TagRepository {
                 has_apev2,
                 cover_description,
             },
+            dirty: false,
         })
     }
 
@@ -200,8 +207,6 @@ impl TagRepository for Id3TagRepository {
         let mut tag = Tag::new();
         Self::apply_common_fields(&mut tag, tags)?;
 
-        // TLEN se omite intencionalmente. El reproductor debe obtener la duración
-        // del stream MP3, evitando valores heredados incorrectos.
         tag.remove("TLEN");
         tag.write_to_path(path, Version::Id3v23)?;
         Ok(())

@@ -1,36 +1,61 @@
 # Normalizador NQ4
 
-Aplicación de escritorio portable en Rust para inspeccionar, crear, editar y normalizar etiquetas ID3 de archivos MP3.
+Aplicación de escritorio portable para Windows, escrita en Rust, orientada a inspeccionar, crear, editar y normalizar etiquetas ID3 de archivos MP3 sin recodificar el audio.
 
-## Objetivo inicial
+## Interfaz de escritorio
 
-El perfil **iPod seguro** reescribe únicamente los metadatos, sin recodificar el audio:
+La aplicación ya está organizada como un editor de escritorio completo:
 
-- ID3v2.3.
-- elimina `TLEN` (evita duraciones incorrectas heredadas);
-- opcionalmente elimina ID3v1 y APEv2 finales;
-- conserva los campos comunes: título, artista, álbum, género, año, pista, disco y comentario;
-- conserva la portada o la reescribe como JPEG compatible y limitada a 600x600;
-- puede crear una copia de seguridad antes de modificar;
-- el audio MP3 no se transcodifica.
+- barra de menús: **Archivo, Editar, Herramientas, Ver y Ayuda**;
+- barra de herramientas;
+- panel de archivos con filtro/buscador;
+- editor central de tags;
+- panel configurable del perfil de normalización;
+- barra de estado;
+- ventanas separadas de **Preferencias, Diagnóstico ID3, Vista previa de portada y Acerca de**;
+- confirmación antes de normalización por lote;
+- progreso del lote sin bloquear toda la interfaz entre archivos;
+- atajos de teclado;
+- drag & drop;
+- cambios pendientes marcados visualmente;
+- guardar un archivo o todos;
+- descartar cambios recargando el archivo;
+- quitar archivos de la lista sin borrarlos del disco.
 
-## Interfaz
+## Edición ID3
 
-- agregar uno o varios MP3;
-- agregar una carpeta completa;
-- arrastrar MP3 a la ventana;
-- inspeccionar versión ID3, TLEN, ID3v1/APEv2 y portada;
-- editar y crear tags;
-- cambiar o eliminar portada;
-- guardar solo los cambios del archivo seleccionado;
-- normalizar el archivo seleccionado o todos los cargados.
+Permite crear o modificar:
+
+- título;
+- artista;
+- álbum;
+- género;
+- año;
+- número de pista;
+- número de disco;
+- comentario;
+- portada JPEG/PNG.
+
+## Perfil iPod seguro
+
+La normalización:
+
+- reescribe como **ID3v2.3**;
+- elimina **TLEN**, evitando duraciones heredadas incorrectas;
+- puede eliminar ID3v1 y APEv2 residuales;
+- conserva los campos musicales comunes;
+- puede convertir la portada a JPEG y limitarla a 600×600 (configurable);
+- crea backup antes de modificar, salvo que el usuario lo desactive;
+- **no transcodifica el stream MP3**.
+
+Los backups se guardan en una carpeta `.nq4-backup` junto a los MP3.
 
 ## Arquitectura
 
-La aplicación está separada en MVC y aplica SOLID mediante composición y traits:
+MVC y SOLID:
 
 ```
-View (eframe/egui)
+View (eframe / egui)
         |
         v
 MainController
@@ -45,12 +70,24 @@ Model
 (AudioFile, TagData, Diagnostics, NormalizationOptions)
 ```
 
-La vista no conoce detalles de ID3 ni manipula archivos. El controlador coordina casos de uso. Los servicios se consumen mediante interfaces (`traits`) sustituibles.
+La vista no manipula ID3 directamente. El controlador coordina los casos de uso y depende de abstracciones (`traits`). Las implementaciones concretas pueden sustituirse sin modificar la UI.
 
 ## Portable
 
-La configuración de release intenta enlazar el CRT de Windows de forma estática. El ejecutable final se generará en `target/release/normalizador-nq4.exe`.
+El release está configurado para enlazar el CRT de Windows de forma estática:
+
+```bash
+cargo build --release
+```
+
+Ejecutable esperado:
+
+```
+target/release/normalizador-nq4.exe
+```
+
+No requiere instalador para su funcionamiento normal.
 
 ## Estado
 
-Primera implementación funcional. Por regla del proyecto, esta tanda fue escrita y subida antes de compilar o ejecutar pruebas.
+Aplicación funcional en desarrollo. La implementación se sube al repositorio antes de realizar compilación o validación final, conforme al flujo del proyecto.
