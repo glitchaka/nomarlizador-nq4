@@ -73,12 +73,6 @@ impl MainController {
         }
     }
 
-    pub fn mark_selected_dirty(&mut self) {
-        if let Some(file) = self.selected_mut() {
-            file.dirty = true;
-        }
-    }
-
     pub fn add_paths(&mut self, paths: impl IntoIterator<Item = PathBuf>) {
         let mut added = 0_usize;
         let mut rejected = 0_usize;
