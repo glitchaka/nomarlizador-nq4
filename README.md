@@ -2,61 +2,44 @@
 
 Aplicación de escritorio portable para Windows, escrita en Rust, para inspeccionar, crear, editar y normalizar etiquetas ID3 de MP3 sin recodificar el audio.
 
-## Flujo principal
-
-1. Añade MP3 individuales o una carpeta completa.
-2. Revisa las alertas ID3.
-3. Edita tags desde la ventana **Editar**.
-4. Normaliza uno o varios archivos.
-5. Los resultados se escriben en **MP3 normalizados**, junto a la carpeta de origen.
-
-La normalización **no modifica el MP3 original**.
-
 ## Interfaz
 
+La interfaz utiliza una composición de aplicación de escritorio moderna:
+
 - ventana sin decoración nativa;
-- barra superior propia, arrastrable;
-- controles propios de minimizar y cerrar;
-- menús Archivo, Editar, Herramientas, Ver y Ayuda;
-- barra de acciones reordenada: añadir, editar, normalizar, lote y abrir salida;
-- panel de archivos y buscador;
-- vista principal de resumen;
-- edición de tags en su propia ventana;
-- ventanas separadas para Preferencias, Diagnóstico, Portada y Acerca de;
-- progreso para normalización por lote;
-- drag & drop y atajos.
+- barra superior propia arrastrable;
+- controles de minimizar, maximizar/restaurar y cerrar a la derecha;
+- navegación lateral;
+- página de Resumen con tarjetas;
+- Biblioteca con tabla completa de MP3;
+- página de Normalización;
+- carátula visible directamente en el resumen y la selección;
+- edición de tags en ventana independiente;
+- diagnóstico, preferencias y vista ampliada de carátula en ventanas independientes;
+- progreso de normalización por lote;
+- búsqueda y drag & drop.
 
-## Edición ID3
+## Flujo
 
-Permite editar título, artista, álbum, género, año, pista, disco, comentario y portada.
+1. Añadir MP3 o una carpeta completa.
+2. Revisar carátulas, tags y alertas.
+3. Editar solo cuando sea necesario.
+4. Usar **Normalizar todos** para procesar la biblioteca completa.
+5. Los resultados se guardan en **MP3 normalizados**.
+
+Los originales se conservan y el audio MP3 no se recodifica.
 
 ## Perfil iPod seguro
 
-- salida en **MP3 normalizados**;
 - ID3v2.3;
 - elimina TLEN;
-- eliminación opcional de ID3v1 y APEv2;
-- portada opcionalmente convertida a JPEG con tamaño máximo configurable;
-- no transcodifica el stream MP3.
+- puede eliminar ID3v1 y APEv2;
+- puede convertir la carátula a JPEG compatible;
+- salida en **MP3 normalizados**.
 
 ## Arquitectura
 
-MVC + SOLID:
-
-```
-View (eframe / egui)
-        |
-        v
-MainController
-        |
-        +--> TagRepository ------> Id3TagRepository
-        +--> FileScanner --------> Mp3FileScanner
-        +--> AudioNormalizer ----> IpodSafeNormalizer
-        |
-        v
-Model
-(AudioFile, TagData, Diagnostics, NormalizationOptions)
-```
+MVC + SOLID.
 
 ## Compilación
 
