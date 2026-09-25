@@ -1,0 +1,21 @@
+[package]
+name = "normalizador-nq4"
+version = "0.1.0"
+edition = "2024"
+description = "Editor y normalizador portable de etiquetas ID3 para MP3"
+license = "MIT"
+
+[dependencies]
+eframe = "0.33"
+id3 = "1.16"
+image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
+rfd = "0.15"
+thiserror = "2.0"
+walkdir = "2.5"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+panic = "abort"
+strip = true
+opt-level = 3
