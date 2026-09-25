@@ -367,28 +367,8 @@ impl Nq4App {
 
                     if ui
                         .add_enabled(
-                            self.controller.selected().is_some(),
-                            egui::Button::new("Editar"),
-                        )
-                        .clicked()
-                    {
-                        self.show_editor = true;
-                    }
-
-                    if ui
-                        .add_enabled(
-                            self.controller.selected().is_some() && self.batch.is_none(),
-                            egui::Button::new("Normalizar"),
-                        )
-                        .clicked()
-                    {
-                        self.controller.normalize_selected(&self.normalization);
-                    }
-
-                    if ui
-                        .add_enabled(
                             !self.controller.files().is_empty() && self.batch.is_none(),
-                            egui::Button::new("Lote"),
+                            egui::Button::new("Normalizar todos"),
                         )
                         .clicked()
                     {
@@ -397,8 +377,28 @@ impl Nq4App {
 
                     if ui
                         .add_enabled(
+                            self.controller.selected().is_some() && self.batch.is_none(),
+                            egui::Button::new("Normalizar seleccionado"),
+                        )
+                        .clicked()
+                    {
+                        self.controller.normalize_selected(&self.normalization);
+                    }
+
+                    if ui
+                        .add_enabled(
+                            self.controller.selected().is_some(),
+                            egui::Button::new("Editar tags"),
+                        )
+                        .clicked()
+                    {
+                        self.show_editor = true;
+                    }
+
+                    if ui
+                        .add_enabled(
                             self.controller.last_output_dir().is_some(),
-                            egui::Button::new("Abrir salida"),
+                            egui::Button::new("Abrir MP3 normalizados"),
                         )
                         .clicked()
                     {
