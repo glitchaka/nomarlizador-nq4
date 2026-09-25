@@ -17,7 +17,6 @@ fn main() -> eframe::Result<()> {
             .with_min_inner_size([1100.0, 700.0])
             .with_resizable(true)
             .with_decorations(false)
-            .with_transparent(true)
             .with_icon(std::sync::Arc::new(icon::window_icon())),
         ..Default::default()
     };

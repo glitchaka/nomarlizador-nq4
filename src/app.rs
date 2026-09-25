@@ -25,13 +25,6 @@ enum Workspace {
     Normalize,
 }
 
-#[derive(Clone, Copy)]
-enum WindowControl {
-    Minimize,
-    Maximize,
-    Close,
-}
-
 struct BatchJob {
     queue: VecDeque<usize>,
     total: usize,
@@ -65,6 +58,7 @@ pub struct Nq4App {
     cover_texture_key: Option<String>,
     cover_texture: Option<egui::TextureHandle>,
     style_configured: bool,
+    maximized: bool,
 }
 
 impl Nq4App {
@@ -84,6 +78,7 @@ impl Nq4App {
             cover_texture_key: None,
             cover_texture: None,
             style_configured: false,
+            maximized: false,
         }
     }
 
@@ -113,122 +108,6 @@ impl Nq4App {
         ctx.set_visuals(visuals);
 
         self.style_configured = true;
-    }
-
-    fn window_opacity(ctx: &egui::Context) -> f32 {
-        if ctx.input(|input| input.viewport().focused.unwrap_or(true)) {
-            1.0
-        } else {
-            0.45
-        }
-    }
-
-    fn faded(color: egui::Color32, opacity: f32) -> egui::Color32 {
-        egui::Color32::from_rgba_unmultiplied(
-            color.r(),
-            color.g(),
-            color.b(),
-            ((color.a() as f32) * opacity).round() as u8,
-        )
-    }
-
-    fn window_control_button(
-        ui: &mut egui::Ui,
-        control: WindowControl,
-        maximized: bool,
-    ) -> egui::Response {
-        let size = egui::vec2(46.0, 36.0);
-        let (rect, response) = ui.allocate_exact_size(size, egui::Sense::click());
-
-        let hover_fill = match control {
-            WindowControl::Close => egui::Color32::from_rgb(196, 43, 50),
-            _ => egui::Color32::from_rgb(54, 60, 67),
-        };
-
-        if response.hovered() {
-            ui.painter().rect_filled(rect, 0.0, hover_fill);
-        }
-
-        let stroke = egui::Stroke::new(
-            1.35,
-            if response.hovered() && matches!(control, WindowControl::Close) {
-                egui::Color32::WHITE
-            } else {
-                egui::Color32::from_rgb(205, 211, 218)
-            },
-        );
-        let center = rect.center();
-
-        match control {
-            WindowControl::Minimize => {
-                ui.painter().line_segment(
-                    [
-                        center + egui::vec2(-5.0, 3.0),
-                        center + egui::vec2(5.0, 3.0),
-                    ],
-                    stroke,
-                );
-            }
-            WindowControl::Maximize => {
-                if maximized {
-                    let back = egui::Rect::from_center_size(
-                        center + egui::vec2(2.0, -2.0),
-                        egui::vec2(9.0, 8.0),
-                    );
-                    let front = egui::Rect::from_center_size(
-                        center + egui::vec2(-2.0, 2.0),
-                        egui::vec2(9.0, 8.0),
-                    );
-                    ui.painter().rect_stroke(
-                        back,
-                        0.0,
-                        stroke,
-                        egui::StrokeKind::Inside,
-                    );
-                    ui.painter().rect_filled(
-                        egui::Rect::from_min_max(
-                            front.min - egui::vec2(1.0, 1.0),
-                            front.max + egui::vec2(1.0, 1.0),
-                        ),
-                        0.0,
-                        egui::Color32::from_rgb(20, 23, 27),
-                    );
-                    ui.painter().rect_stroke(
-                        front,
-                        0.0,
-                        stroke,
-                        egui::StrokeKind::Inside,
-                    );
-                } else {
-                    let box_rect =
-                        egui::Rect::from_center_size(center, egui::vec2(10.0, 9.0));
-                    ui.painter().rect_stroke(
-                        box_rect,
-                        0.0,
-                        stroke,
-                        egui::StrokeKind::Inside,
-                    );
-                }
-            }
-            WindowControl::Close => {
-                ui.painter().line_segment(
-                    [
-                        center + egui::vec2(-5.0, -5.0),
-                        center + egui::vec2(5.0, 5.0),
-                    ],
-                    stroke,
-                );
-                ui.painter().line_segment(
-                    [
-                        center + egui::vec2(5.0, -5.0),
-                        center + egui::vec2(-5.0, 5.0),
-                    ],
-                    stroke,
-                );
-            }
-        }
-
-        response
     }
 
     fn open_files(&mut self) {
@@ -288,96 +167,68 @@ impl Nq4App {
     }
 
     fn title_bar(&mut self, ctx: &egui::Context) {
-        use egui::{PointerButton, UiBuilder};
-
-        let opacity = Self::window_opacity(ctx);
-
         egui::TopBottomPanel::top("custom_title_bar")
-            .exact_height(40.0)
-            .frame(
-                egui::Frame::new()
-                    .fill(Self::faded(egui::Color32::from_rgb(20, 23, 27), opacity))
-                    .stroke(egui::Stroke::new(
-                        1.0,
-                        Self::faded(egui::Color32::from_rgb(48, 53, 60), opacity),
-                    )),
-            )
+            .exact_height(38.0)
+            .frame(egui::Frame::new().fill(egui::Color32::from_rgb(20, 23, 27)))
             .show(ctx, |ui| {
-                ui.set_opacity(opacity);
+                ui.horizontal_centered(|ui| {
+                    ui.add_space(10.0);
+                    ui.label(egui::RichText::new("NQ4").strong().color(ACCENT));
+                    ui.label(
+                        egui::RichText::new("Normalizador de MP3")
+                            .color(egui::Color32::from_rgb(185, 192, 200)),
+                    );
 
-                let title_bar_rect = ui.max_rect();
-                let title_response = ui.interact(
-                    title_bar_rect,
-                    egui::Id::new("nq4_title_bar_drag"),
-                    egui::Sense::click_and_drag(),
-                );
+                    let controls_width = 124.0;
+                    let drag_width = (ui.available_width() - controls_width).max(80.0);
+                    let (_, response) = ui.allocate_exact_size(
+                        egui::vec2(drag_width, 30.0),
+                        egui::Sense::click_and_drag(),
+                    );
 
-                if title_response.drag_started_by(PointerButton::Primary) {
-                    ui.send_viewport_cmd(egui::ViewportCommand::StartDrag);
-                }
+                    if response.drag_started() {
+                        ctx.send_viewport_cmd(egui::ViewportCommand::StartDrag);
+                    }
 
-                let is_maximized =
-                    ui.input(|input| input.viewport().maximized.unwrap_or(false));
+                    if response.double_clicked() {
+                        self.maximized = !self.maximized;
+                        ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(self.maximized));
+                    }
 
-                if title_response.double_clicked() {
-                    ui.send_viewport_cmd(egui::ViewportCommand::Maximized(!is_maximized));
-                }
+                    if ui
+                        .add_sized([36.0, 28.0], egui::Button::new("—").frame(false))
+                        .on_hover_text("Minimizar")
+                        .clicked()
+                    {
+                        ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true));
+                    }
 
-                ui.painter().text(
-                    title_bar_rect.left_center() + egui::vec2(16.0, 0.0),
-                    egui::Align2::LEFT_CENTER,
-                    "NQ4",
-                    egui::FontId::proportional(15.0),
-                    ACCENT,
-                );
+                    let maximize_label = if self.maximized { "❐" } else { "□" };
+                    if ui
+                        .add_sized([36.0, 28.0], egui::Button::new(maximize_label).frame(false))
+                        .on_hover_text(if self.maximized { "Restaurar" } else { "Maximizar" })
+                        .clicked()
+                    {
+                        self.maximized = !self.maximized;
+                        ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(self.maximized));
+                    }
 
-                ui.painter().text(
-                    title_bar_rect.left_center() + egui::vec2(50.0, 0.0),
-                    egui::Align2::LEFT_CENTER,
-                    "Normalizador de MP3",
-                    egui::FontId::proportional(14.0),
-                    egui::Color32::from_rgb(190, 197, 205),
-                );
-
-                ui.scope_builder(
-                    UiBuilder::new()
-                        .max_rect(title_bar_rect)
-                        .layout(egui::Layout::right_to_left(egui::Align::Center)),
-                    |ui| {
-                        ui.spacing_mut().item_spacing.x = 0.0;
-
-                        if Self::window_control_button(ui, WindowControl::Close, is_maximized)
-                            .on_hover_text("Cerrar")
-                            .clicked()
-                        {
-                            ui.send_viewport_cmd(egui::ViewportCommand::Close);
-                        }
-
-                        if Self::window_control_button(ui, WindowControl::Maximize, is_maximized)
-                            .on_hover_text(if is_maximized { "Restaurar" } else { "Maximizar" })
-                            .clicked()
-                        {
-                            ui.send_viewport_cmd(egui::ViewportCommand::Maximized(!is_maximized));
-                        }
-
-                        if Self::window_control_button(ui, WindowControl::Minimize, is_maximized)
-                            .on_hover_text("Minimizar")
-                            .clicked()
-                        {
-                            ui.send_viewport_cmd(egui::ViewportCommand::Minimized(true));
-                        }
-                    },
-                );
+                    if ui
+                        .add_sized([36.0, 28.0], egui::Button::new("×").frame(false))
+                        .on_hover_text("Cerrar")
+                        .clicked()
+                    {
+                        ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                    }
+                });
             });
     }
 
     fn menu_bar(&mut self, ctx: &egui::Context) {
-        let opacity = Self::window_opacity(ctx);
         egui::TopBottomPanel::top("menu_bar")
             .exact_height(32.0)
-            .frame(egui::Frame::new().fill(Self::faded(egui::Color32::from_rgb(24, 28, 33), opacity)))
+            .frame(egui::Frame::new().fill(egui::Color32::from_rgb(24, 28, 33)))
             .show(ctx, |ui| {
-                ui.set_opacity(opacity);
                 ui.horizontal_centered(|ui| {
                     ui.add_space(8.0);
 
@@ -518,16 +369,14 @@ impl Nq4App {
     }
 
     fn sidebar(&mut self, ctx: &egui::Context) {
-        let opacity = Self::window_opacity(ctx);
         egui::SidePanel::left("sidebar")
             .exact_width(205.0)
             .frame(
                 egui::Frame::new()
-                    .fill(Self::faded(SIDEBAR, opacity))
+                    .fill(SIDEBAR)
                     .inner_margin(egui::Margin::symmetric(14, 16)),
             )
             .show(ctx, |ui| {
-                ui.set_opacity(opacity);
                 ui.label(
                     egui::RichText::new("NQ4")
                         .size(22.0)
@@ -1259,7 +1108,6 @@ impl Nq4App {
             .min_width(560.0)
             .resizable(true)
             .show(ctx, |ui| {
-                ui.set_opacity(Self::window_opacity(ctx));
                 let Some(file) = self.controller.selected_mut() else {
                     ui.label("Selecciona un archivo.");
                     return;
@@ -1396,7 +1244,6 @@ impl Nq4App {
             .open(&mut open)
             .default_width(540.0)
             .show(ctx, |ui| {
-                ui.set_opacity(Self::window_opacity(ctx));
                 let Some(file) = self.controller.selected() else {
                     ui.label("Selecciona un archivo.");
                     return;
@@ -1462,7 +1309,6 @@ impl Nq4App {
             .default_width(500.0)
             .resizable(false)
             .show(ctx, |ui| {
-                ui.set_opacity(Self::window_opacity(ctx));
                 ui.label(egui::RichText::new("Perfil iPod seguro").size(20.0).strong());
                 ui.label(
                     egui::RichText::new(format!(
@@ -1532,7 +1378,6 @@ impl Nq4App {
             .resizable(true)
             .default_size([560.0, 600.0])
             .show(ctx, |ui| {
-                ui.set_opacity(Self::window_opacity(ctx));
                 if let Some(texture) = &texture {
                     let available = ui.available_size();
                     let source = texture.size_vec2();
@@ -1565,7 +1410,6 @@ impl Nq4App {
             .resizable(false)
             .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
             .show(ctx, |ui| {
-                ui.set_opacity(Self::window_opacity(ctx));
                 ui.label(format!(
                     "Se crearán {} MP3 normalizados.",
                     self.controller.files().len()
@@ -1634,12 +1478,10 @@ impl Nq4App {
     }
 
     fn status_bar(&mut self, ctx: &egui::Context) {
-        let opacity = Self::window_opacity(ctx);
         egui::TopBottomPanel::bottom("status")
             .exact_height(32.0)
-            .frame(egui::Frame::new().fill(Self::faded(egui::Color32::from_rgb(20, 23, 27), opacity)))
+            .frame(egui::Frame::new().fill(egui::Color32::from_rgb(20, 23, 27)))
             .show(ctx, |ui| {
-                ui.set_opacity(opacity);
                 ui.horizontal_centered(|ui| {
                     if let Some(batch) = &self.batch {
                         ui.label(format!(
@@ -1682,7 +1524,6 @@ impl Nq4App {
             .collapsible(false)
             .resizable(false)
             .show(ctx, |ui| {
-                ui.set_opacity(Self::window_opacity(ctx));
                 ui.label(egui::RichText::new("Normalizador NQ4").size(21.0).strong());
                 ui.label("Editor y normalizador portable de etiquetas ID3.");
                 ui.add_space(8.0);
@@ -1695,10 +1536,6 @@ impl Nq4App {
 }
 
 impl eframe::App for Nq4App {
-    fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
-        egui::Rgba::TRANSPARENT.to_array()
-    }
-
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.configure_style(ctx);
         self.handle_drop(ctx);
@@ -1710,16 +1547,13 @@ impl eframe::App for Nq4App {
         self.status_bar(ctx);
         self.sidebar(ctx);
 
-        let opacity = Self::window_opacity(ctx);
-
         egui::CentralPanel::default()
             .frame(
                 egui::Frame::new()
-                    .fill(Self::faded(BG, opacity))
+                    .fill(BG)
                     .inner_margin(egui::Margin::symmetric(20, 18)),
             )
             .show(ctx, |ui| {
-                ui.set_opacity(opacity);
                 egui::ScrollArea::vertical()
                     .auto_shrink([false, false])
                     .show(ui, |ui| match self.workspace {
