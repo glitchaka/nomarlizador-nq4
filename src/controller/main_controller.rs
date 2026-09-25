@@ -307,7 +307,12 @@ impl MainController {
             if self
                 .files
                 .iter()
-                .any(|existing| existing.path.eq_ignore_ascii_case(&path))
+                .any(|existing| {
+                    existing
+                        .path
+                        .to_string_lossy()
+                        .eq_ignore_ascii_case(path.to_string_lossy().as_ref())
+                })
             {
                 continue;
             }
