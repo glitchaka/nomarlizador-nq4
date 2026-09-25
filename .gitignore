@@ -1,0 +1,9 @@
+/target
+/.idea
+/.vscode
+*.pdb
+*.ilk
+*.bak
+.nq4-backup/
+Thumbs.db
+.DS_Store
