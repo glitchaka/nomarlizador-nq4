@@ -25,6 +25,13 @@ enum Workspace {
     Normalize,
 }
 
+#[derive(Clone, Copy)]
+enum WindowButtonKind {
+    Minimize,
+    Maximize,
+    Close,
+}
+
 struct BatchJob {
     queue: VecDeque<usize>,
     total: usize,
@@ -166,6 +173,104 @@ impl Nq4App {
         }
     }
 
+    fn window_button(
+        ui: &mut egui::Ui,
+        kind: WindowButtonKind,
+        maximized: bool,
+    ) -> egui::Response {
+        let (rect, response) =
+            ui.allocate_exact_size(egui::vec2(46.0, 38.0), egui::Sense::click());
+
+        if response.hovered() {
+            let fill = match kind {
+                WindowButtonKind::Close => egui::Color32::from_rgb(196, 43, 50),
+                _ => egui::Color32::from_rgb(48, 54, 61),
+            };
+            ui.painter().rect_filled(rect, 0.0, fill);
+        }
+
+        let icon_color = if response.hovered() && matches!(kind, WindowButtonKind::Close) {
+            egui::Color32::WHITE
+        } else {
+            egui::Color32::from_rgb(205, 211, 218)
+        };
+        let stroke = egui::Stroke::new(1.25_f32, icon_color);
+        let center = rect.center();
+
+        match kind {
+            WindowButtonKind::Minimize => {
+                ui.painter().line_segment(
+                    [
+                        center + egui::vec2(-5.5, 3.0),
+                        center + egui::vec2(5.5, 3.0),
+                    ],
+                    stroke,
+                );
+            }
+            WindowButtonKind::Maximize => {
+                if maximized {
+                    let back = egui::Rect::from_min_size(
+                        center + egui::vec2(-2.0, -5.0),
+                        egui::vec2(9.0, 8.0),
+                    );
+                    let front = egui::Rect::from_min_size(
+                        center + egui::vec2(-6.0, -1.0),
+                        egui::vec2(9.0, 8.0),
+                    );
+
+                    ui.painter().rect_stroke(
+                        back,
+                        0.0,
+                        stroke,
+                        egui::StrokeKind::Inside,
+                    );
+                    ui.painter().rect_filled(
+                        front.expand(1.0),
+                        0.0,
+                        if response.hovered() {
+                            egui::Color32::from_rgb(48, 54, 61)
+                        } else {
+                            egui::Color32::from_rgb(20, 23, 27)
+                        },
+                    );
+                    ui.painter().rect_stroke(
+                        front,
+                        0.0,
+                        stroke,
+                        egui::StrokeKind::Inside,
+                    );
+                } else {
+                    let box_rect =
+                        egui::Rect::from_center_size(center, egui::vec2(10.0, 9.0));
+                    ui.painter().rect_stroke(
+                        box_rect,
+                        0.0,
+                        stroke,
+                        egui::StrokeKind::Inside,
+                    );
+                }
+            }
+            WindowButtonKind::Close => {
+                ui.painter().line_segment(
+                    [
+                        center + egui::vec2(-5.0, -5.0),
+                        center + egui::vec2(5.0, 5.0),
+                    ],
+                    stroke,
+                );
+                ui.painter().line_segment(
+                    [
+                        center + egui::vec2(5.0, -5.0),
+                        center + egui::vec2(-5.0, 5.0),
+                    ],
+                    stroke,
+                );
+            }
+        }
+
+        response
+    }
+
     fn title_bar(&mut self, ctx: &egui::Context) {
         egui::TopBottomPanel::top("custom_title_bar")
             .exact_height(38.0)
@@ -179,10 +284,10 @@ impl Nq4App {
                             .color(egui::Color32::from_rgb(185, 192, 200)),
                     );
 
-                    let controls_width = 124.0;
+                    let controls_width = 138.0;
                     let drag_width = (ui.available_width() - controls_width).max(80.0);
                     let (_, response) = ui.allocate_exact_size(
-                        egui::vec2(drag_width, 30.0),
+                        egui::vec2(drag_width, 38.0),
                         egui::Sense::click_and_drag(),
                     );
 
@@ -195,17 +300,14 @@ impl Nq4App {
                         ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(self.maximized));
                     }
 
-                    if ui
-                        .add_sized([36.0, 28.0], egui::Button::new("—").frame(false))
+                    if Self::window_button(ui, WindowButtonKind::Minimize, self.maximized)
                         .on_hover_text("Minimizar")
                         .clicked()
                     {
                         ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true));
                     }
 
-                    let maximize_label = if self.maximized { "❐" } else { "□" };
-                    if ui
-                        .add_sized([36.0, 28.0], egui::Button::new(maximize_label).frame(false))
+                    if Self::window_button(ui, WindowButtonKind::Maximize, self.maximized)
                         .on_hover_text(if self.maximized { "Restaurar" } else { "Maximizar" })
                         .clicked()
                     {
@@ -213,8 +315,7 @@ impl Nq4App {
                         ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(self.maximized));
                     }
 
-                    if ui
-                        .add_sized([36.0, 28.0], egui::Button::new("×").frame(false))
+                    if Self::window_button(ui, WindowButtonKind::Close, self.maximized)
                         .on_hover_text("Cerrar")
                         .clicked()
                     {
