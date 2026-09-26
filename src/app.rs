@@ -104,7 +104,7 @@ impl Nq4App {
         visuals.widgets.hovered.bg_fill = egui::Color32::from_rgb(57, 63, 70);
         visuals.widgets.active.bg_fill = egui::Color32::from_rgb(64, 71, 78);
         visuals.selection.bg_fill = ACCENT;
-        visuals.selection.stroke = egui::Stroke::new(1.0, egui::Color32::WHITE);
+        visuals.selection.stroke = egui::Stroke::new(1.0_f32, egui::Color32::WHITE);
         ctx.set_visuals(visuals);
 
         self.style_configured = true;
@@ -575,7 +575,7 @@ impl Nq4App {
             rect,
             10.0,
             egui::Color32::from_rgb(29, 34, 39),
-            egui::Stroke::new(1.0, egui::Color32::from_rgb(60, 67, 74)),
+            egui::Stroke::new(1.0_f32, egui::Color32::from_rgb(60, 67, 74)),
             egui::StrokeKind::Inside,
         );
         ui.painter().text(
