@@ -274,54 +274,83 @@ impl Nq4App {
     fn title_bar(&mut self, ctx: &egui::Context) {
         egui::TopBottomPanel::top("custom_title_bar")
             .exact_height(38.0)
-            .frame(egui::Frame::new().fill(egui::Color32::from_rgb(20, 23, 27)))
+            .frame(
+                egui::Frame::new()
+                    .fill(egui::Color32::from_rgb(20, 23, 27))
+                    .inner_margin(egui::Margin::ZERO),
+            )
             .show(ctx, |ui| {
-                ui.horizontal_centered(|ui| {
-                    ui.add_space(10.0);
-                    ui.label(egui::RichText::new("NQ4").strong().color(ACCENT));
-                    ui.label(
-                        egui::RichText::new("Normalizador de MP3")
-                            .color(egui::Color32::from_rgb(185, 192, 200)),
-                    );
+                let rect = ui.max_rect();
+                let controls_width = 46.0 * 3.0;
+                let controls_rect = egui::Rect::from_min_max(
+                    egui::pos2(rect.right() - controls_width, rect.top()),
+                    rect.right_bottom(),
+                );
+                let drag_rect = egui::Rect::from_min_max(
+                    rect.left_top(),
+                    egui::pos2(controls_rect.left(), rect.bottom()),
+                );
 
-                    let controls_width = 138.0;
-                    let drag_width = (ui.available_width() - controls_width).max(80.0);
-                    let (_, response) = ui.allocate_exact_size(
-                        egui::vec2(drag_width, 38.0),
-                        egui::Sense::click_and_drag(),
-                    );
+                let drag_response = ui.interact(
+                    drag_rect,
+                    egui::Id::new("window_title_drag"),
+                    egui::Sense::click_and_drag(),
+                );
 
-                    if response.drag_started() {
-                        ctx.send_viewport_cmd(egui::ViewportCommand::StartDrag);
-                    }
+                if drag_response.drag_started() {
+                    ctx.send_viewport_cmd(egui::ViewportCommand::StartDrag);
+                }
 
-                    if response.double_clicked() {
-                        self.maximized = !self.maximized;
-                        ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(self.maximized));
-                    }
+                if drag_response.double_clicked() {
+                    self.maximized = !self.maximized;
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(self.maximized));
+                }
 
-                    if Self::window_button(ui, WindowButtonKind::Minimize, self.maximized)
-                        .on_hover_text("Minimizar")
-                        .clicked()
-                    {
-                        ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true));
-                    }
+                ui.painter().text(
+                    rect.left_center() + egui::vec2(14.0, 0.0),
+                    egui::Align2::LEFT_CENTER,
+                    "NQ4",
+                    egui::FontId::proportional(15.0),
+                    ACCENT,
+                );
+                ui.painter().text(
+                    rect.left_center() + egui::vec2(48.0, 0.0),
+                    egui::Align2::LEFT_CENTER,
+                    "Normalizador de MP3",
+                    egui::FontId::proportional(14.0),
+                    egui::Color32::from_rgb(185, 192, 200),
+                );
 
-                    if Self::window_button(ui, WindowButtonKind::Maximize, self.maximized)
-                        .on_hover_text(if self.maximized { "Restaurar" } else { "Maximizar" })
-                        .clicked()
-                    {
-                        self.maximized = !self.maximized;
-                        ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(self.maximized));
-                    }
+                ui.scope_builder(
+                    egui::UiBuilder::new()
+                        .max_rect(controls_rect)
+                        .layout(egui::Layout::right_to_left(egui::Align::Center)),
+                    |ui| {
+                        ui.spacing_mut().item_spacing.x = 0.0;
 
-                    if Self::window_button(ui, WindowButtonKind::Close, self.maximized)
-                        .on_hover_text("Cerrar")
-                        .clicked()
-                    {
-                        ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-                    }
-                });
+                        if Self::window_button(ui, WindowButtonKind::Close, self.maximized)
+                            .on_hover_text("Cerrar")
+                            .clicked()
+                        {
+                            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                        }
+
+                        if Self::window_button(ui, WindowButtonKind::Maximize, self.maximized)
+                            .on_hover_text(if self.maximized { "Restaurar" } else { "Maximizar" })
+                            .clicked()
+                        {
+                            self.maximized = !self.maximized;
+                            ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(self.maximized));
+                        }
+
+                        if Self::window_button(ui, WindowButtonKind::Minimize, self.maximized)
+                            .on_hover_text("Minimizar")
+                            .clicked()
+                        {
+                            ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true));
+                        }
+                    },
+                );
             });
     }
 
